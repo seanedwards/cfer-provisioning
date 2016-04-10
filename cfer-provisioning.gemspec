@@ -9,9 +9,9 @@ Gem::Specification.new do |spec|
   spec.authors       = ["Sean Edwards"]
   spec.email         = ["stedwards87+git@gmail.com"]
 
-  spec.summary       = %q{TODO: Write a short summary, because Rubygems requires one.}
-  spec.description   = %q{TODO: Write a longer description or delete this line.}
-  spec.homepage      = "TODO: Put your gem's website or public repo URL here."
+  spec.summary       = %q{Provisioning tools for Cfer}
+  spec.description   = %q{Provisioning tools for Cfer}
+  spec.homepage      = "https://github.com/seanedwards/cfer-provisioning"
   spec.license       = "MIT"
 
   # Prevent pushing this gem to RubyGems.org by setting 'allowed_push_host', or
