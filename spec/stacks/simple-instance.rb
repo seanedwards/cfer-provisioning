@@ -27,7 +27,7 @@ resource :EC2Instance, 'AWS::EC2::Instance', CreationPolicy: {
   image_id Fn::ref(:ImageId)
   instance_type Fn::ref(:InstanceType)
   iam_instance_profile VPC[:InstanceProfile]
-  key_name 'SeniorlinkMBP'
+  key_name (parameters[:SSHKey] || raise("Please specify `SSHKey` in parameters.yml"))
   subnet_id VPC[:Subnet]
   security_group_ids [ VPC[:SecurityGroup] ]
 end

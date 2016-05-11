@@ -12,7 +12,7 @@ VPC_STACK_NAME = 'cfer-provisioning-vpc'
 RSpec.configure do |config|
   config.before(:suite) do
     puts "Converging VPC"
-    Cfer.converge! VPC_STACK_NAME, template: 'spec/stacks/vpc.rb', follow: true, number: 0
+    Cfer.converge! VPC_STACK_NAME, template: 'spec/stacks/vpc.rb', follow: true, number: 0, parameter_file: 'parameters.yaml'
   end
 
   config.after(:suite) do
