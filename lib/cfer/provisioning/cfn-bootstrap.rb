@@ -15,9 +15,7 @@ module Cfer::Provisioning
     script = [ "#!/bin/bash -xe\n" ]
 
     script.concat [
-      "which cfn-init > /dev/null\n",
-      "if [[ $? -ne 0 ]]\n",
-      "then\n"
+      "command -v cfn-init 2>&1 || {\n",
     ]
       script.concat case options[:flavor]
         when :redhat, :centos, :amazon
@@ -33,7 +31,7 @@ module Cfer::Provisioning
           ]
       end
     script.concat [
-      "fi\n"
+      "}\n"
     ]
 
     script.concat [
@@ -106,7 +104,7 @@ module Cfer::Provisioning
 
   def cfn_init_config(name, options = {}, &block)
     cfg = ConfigSet.new(cloudformation_init[name])
-    cfg.instance_eval(&block)
+    Docile.dsl_eval(cfg, &block)
     cloudformation_init[name] = cfg.to_h
   end
 
