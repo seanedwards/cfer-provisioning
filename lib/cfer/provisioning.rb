@@ -1,4 +1,5 @@
 require "cfer/provisioning/version"
+require "cfer/cfizer"
 require 'cfer'
 
 require 'base64'
@@ -9,6 +10,9 @@ module Cfer
   end
 end
 
+require 'cfer/provisioning/extensions'
+
+require 'cfer/provisioning/cloud-init'
 require 'cfer/provisioning/cfn-bootstrap'
 require 'cfer/provisioning/chef'
 

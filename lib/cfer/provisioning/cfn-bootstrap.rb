@@ -1,4 +1,7 @@
+require 'erubis'
+
 module Cfer::Provisioning
+  DEFAULT_HUP_INTERVAL_IN_MINUTES = 1
 
   def cfn_metadata
     self[:Metadata] ||= {}
@@ -11,83 +14,11 @@ module Cfer::Provisioning
 
   def cfn_init_setup(options = {})
     cfn_metadata['AWS::CloudFormation::Init'] = {}
-
-    script = [ "#!/bin/bash -xe\n" ]
-
-    script.concat [
-      "command -v cfn-init 2>&1 || {\n",
-    ]
-      script.concat case options[:flavor]
-        when :redhat, :centos, :amazon
-          [
-            "rpm -Uvh https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.amzn1.noarch.rpm\n"
-          ]
-        when :ubuntu, :debian, nil
-          [
-            "apt-get update --fix-missing\n",
-            "apt-get install -y python-pip\n",
-            "pip install setuptools\n",
-            "easy_install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz\n",
-          ]
-      end
-    script.concat [
-      "}\n"
-    ]
-
-    script.concat [
-      "# Helper function\n",
-      "function error_exit\n",
-      "{\n",
-    ]
-
-    if options[:signal]
-      script.concat [
-        "/usr/local/bin/cfn-signal",
-          " -s false",
-          " --resource '", options[:signal], "'",
-          " --stack ", Cfer::Cfn::AWS::stack_name,
-          " --region ", Cfer::Cfn::AWS::region,
-          "\n"
-        ]
-    end
-
-    script.concat [
-      "  exit 1\n",
-      "}\n"
-    ]
-
-
-    script.concat [
-      "/usr/local/bin/cfn-init",
-        " --configsets '", Cfer::Core::Fn::join(',', options[:cfn_init_config_set]) || raise('Please specify a `cfn_init_config_set`'), "'",
-        " --stack ", Cfer::Cfn::AWS::stack_name,
-        " --resource ", @name,
-        " --region ", Cfer::Cfn::AWS::region,
-        " || error_exit 'Failed to run cfn-init'\n"
-    ]
+    cfn_init_set_cloud_init(options)
 
     if options[:cfn_hup_config_set]
       cfn_hup(options)
-
-      script.concat [
-        "/usr/local/bin/cfn-hup || error_exit 'Failed to start cfn-hup'\n"
-      ]
     end
-
-    if options[:signal]
-      script.concat [
-        "/usr/local/bin/cfn-signal",
-          " -s true",
-          " --resource '", options[:signal], "'",
-          " --stack ", Cfer::Cfn::AWS::stack_name,
-          " --region ", Cfer::Cfn::AWS::region,
-          "\n"
-        ]
-    end
-
-    user_data Cfer::Core::Fn::base64(
-      Cfer::Core::Fn::join('', script)
-    )
   end
 
   def config_set(name)
@@ -152,44 +83,69 @@ module Cfer::Provisioning
 
   def cfn_hup(options)
     resource_name = @name
-    target_config_set = options[:cfn_hup_config_set] || raise('Please specify a `cfn_hup_config_set`')
+    target_config_set = options[:cfn_hup_config_set] ||
+      raise('Please specify a `cfn_hup_config_set`')
 
     cfn_init_config_set :cfn_hup, [ :cfn_hup ]
 
     cfn_init_config(:cfn_hup) do
       if options[:access_key] && options[:secret_key]
-        file '/etc/cfn/cfn-credentials', content: Cfer::Core::Fn::join('', [
-          "AWSAccessKeyId=", options[:access_key], "\n",
-          "AWSSecretKey=", options[:secret_key], "\n"
-        ]),
-        mode: '000400',
-        owner: 'root',
-        group: 'root'
+        key_content = <<-FILE.strip_heredoc
+          AWSAccessKeyId=#{options[:access_key]}
+          AWSSecretKey=#{options[:secret_key]}
+        FILE
+
+        file '/etc/cfn/cfn-credentials', content: key_content,
+          mode: '000400', owner: 'root', group: 'root'
       end
 
-      file '/etc/cfn/cfn-hup.conf', content: Cfer::Core::Fn::join('', [
-        "[main]\n",
-        "stack=", Cfer::Cfn::AWS::stack_name, "\n",
-        "region=", Cfer::Cfn::AWS::region, "\n",
-        "interval=", options[:interval] || 1, "\n"
-      ]),
-      mode: '000400',
-      owner: 'root',
-      group: 'root'
+      hup_conf_content = <<-FILE.strip_heredoc
+        [main]
+        stack=C{AWS.stack_name}
+        region=C{AWS.region}
+        interval=#{DEFAULT_HUP_INTERVAL_IN_MINUTES}
+      FILE
+      file '/etc/cfn/cfn-hup.conf', content: Cfer.cfize(hup_conf_content),
+        mode: '000400', owner: 'root', group: 'root'
 
-      file '/etc/cfn/hooks.d/cfn-init-reload.conf', content: Cfer::Core::Fn::join('', [
-        "[cfn-auto-reloader-hook]\n",
-        "triggers=post.update\n",
-        "path=Resources.#{resource_name}.Metadata\n",
-        "action=/usr/local/bin/cfn-init",
-          " -c '", Cfer::Core::Fn::join(',', target_config_set), "'",
-          " -s ", Cfer::Cfn::AWS::stack_name,
-          " --region ", Cfer::Cfn::AWS::region,
-          " -r #{resource_name}",
-          "\n",
-        "runas=root\n"
-      ])
+      cfn_init_reload_content = <<-FILE.strip_heredoc
+        [cfn-auto-reloader-hook]
+        triggers=post.update
+        path=Resources.#{resource_name}.Metadata
+        runas=root
+        action=/usr/local/bin/cfn-init -r #{resource_name} --region C{AWS.region} -s C{AWS.stack_name} -c '#{target_config_set.join(",")}'
+      FILE
+
+      file '/etc/cfn/hooks.d/cfn-init-reload.conf',
+        content: Cfer.cfize(cfn_init_reload_content),
+        mode: '000400', owner: 'root', group: 'root'
     end
+  end
+
+  def cfn_init_set_cloud_init(options)
+    cloud_init_bootcmds << "mkdir -p /usr/local/bin"
+
+    case options[:flavor]
+    when :redhat, :centos, :amazon
+      cloud_init_bootcmds <<
+        'rpm -Uvh https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.amzn1.noarch.rpm'
+    when :debian, :ubuntu, nil
+      [
+        'apt-get update --fix-missing',
+        'apt-get install -y python-pip',
+        'pip install setuptools',
+        'easy_install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz'
+      ].each { |line| cloud_init_bootcmds << line }
+    end
+
+    cfn_script_eruby = Erubis::Eruby.new(IO.read("#{__dir__}/cfn-bootstrap.bash.erb"))
+
+    cloud_init_write_files << {
+      path: '/usr/local/bin/cfn-bootstrap.bash',
+      content: cfn_script_eruby.evaluate(resource_name: @name, options: options)
+    }
+
+    cloud_init_runcmds << "bash /usr/local/bin/cfn-bootstrap.bash"
   end
 end
 

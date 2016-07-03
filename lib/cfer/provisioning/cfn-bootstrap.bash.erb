@@ -1,0 +1,30 @@
+#! /bin/bash -xe
+
+function error_exit
+{
+<% unless @options[:signal].nil? %>
+  /usr/local/bin/cfn-signal -s 'false' \
+    --resource '<%= @options[:signal] %>' \
+    --stack 'C{AWS.stack_name}' \
+    --region 'C{AWS.region}'
+<% end %>
+
+  exit 1
+}
+
+/usr/local/bin/cfn-init \
+  --resource '<%= @resource_name %>' \
+  --stack 'C{AWS.stack_name}' \
+  --region 'C{AWS.region}' \
+  --configsets '<%= @options[:cfn_init_config_set].join(",") %>' || error_exit 'cfn-init failed to start'
+
+<% unless @options[:cfn_hup_config_set].nil? -%>
+  /usr/local/bin/cfn-hup || error_exit 'cfn-hup failed to start'
+<% end -%>
+
+<% unless @options[:signal].nil? -%>
+  /usr/local/bin/cfn-signal -s 'true' \
+    --resource '<%= @options[:signal] %>' \
+    --stack 'C{AWS.stack_name}' \
+    --region 'C{AWS.region}'
+<% end -%>

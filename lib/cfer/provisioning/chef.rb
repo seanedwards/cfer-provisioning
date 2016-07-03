@@ -1,98 +1,144 @@
 module Cfer::Provisioning
+  def install_chef_solo_with_cloud_init(options = {})
+    # we can't use the cloud-init `chef` module because it expects a server/validator.
 
-  def install_chef(options = {})
-    setup_set = [ :install_chef ]
-    cfn_init_config :install_chef do
-      command :install_chef, "curl https://www.opscode.com/chef/install.sh | bash -s -- -v #{options[:version] || 'latest'}"
-      command :make_ohai_hints, 'mkdir -p /etc/chef/ohai/hints && touch /etc/chef/ohai/hints/ec2.json'
-      command :make_chefdir, 'mkdir -p /var/chef/cookbooks && mkdir -p /var/chef/data_bags'
-    end
-
-    if options[:berksfile]
-      cfn_init_config :install_berkshelf do
-        file '/var/chef/berkshelf.sh', content: <<-EOF.strip_heredoc
-          export BERKSHELF_PATH=/var/chef/berkshelf
-
-          # Some cookbooks have UTF-8, and cfn-init uses US-ASCII because of reasons
-          export LANG=en_US.UTF-8
-          export RUBYOPTS="-E utf-8"
-
-          # Berkshelf seems a bit unreliable, so retry these commands a couple times.
-          if [ -e Berksfile.lock ]
-          then
-            for i in {1..3}; do /opt/chef/embedded/bin/berks update && break || sleep 15; done
-          fi
-          for i in {1..3}; do /opt/chef/embedded/bin/berks vendor /var/chef/cookbooks -b /var/chef/Berksfile && break || sleep 15; done
-        EOF
-        command :install_berkshelf, '/opt/chef/embedded/bin/gem install berkshelf --no-ri --no-rdoc'
-        command :install_git, 'apt-get install -y git'
-      end
-      setup_set.append :install_berkshelf
-    end
-
-    if options[:berksfile]
-      cfn_init_config :run_berkshelf do
-        file '/var/chef/Berksfile', content: options[:berksfile].strip_heredoc
-        command :run_berkshelf, 'bash -l /var/chef/berkshelf.sh', cwd: '/var/chef'
-      end
-    end
-
-    cfn_init_config_set :install_chef, setup_set
+    cloud_init_bootcmds <<
+      "command -v chef-client || " \
+        "curl https://www.opscode.com/chef/install.sh | " \
+          "bash -s -- -v #{options[:version] || 'latest'}"
+    cloud_init_bootcmds << "mkdir -p /etc/chef/ohai/hints"
+    cloud_init_bootcmds << "touch /etc/chef/ohai/hints/ec2.json"
+    cloud_init_bootcmds << "mkdir -p '#{options[:cookbook_path]}'"
+    cloud_init_bootcmds << "mkdir -p '#{options[:data_bag_path]}'"
   end
 
-  def set_chef_json(json = {})
-    self[:Metadata]['CferExt::Provisioning::Chef'] = json || {}
+  def install_berkshelf(options)
+    cloud_init_packages << 'git'
+
+    cloud_init_bootcmds << '/opt/chef/embedded/bin/gem install berkshelf --no-ri --no-rdoc'
+
+    berks_content = <<-EOF.strip_heredoc
+        # may be run before HOME is established (fixes RbReadLine bug)
+        export HOME=/root
+        export BERKSHELF_PATH=/var/chef/berkshelf
+
+        # Some cookbooks have UTF-8, and cfn-init uses US-ASCII because of reasons
+        export LANG=en_US.UTF-8
+        export RUBYOPTS="-E utf-8"
+
+        # Berkshelf seems a bit unreliable, so retry these commands a couple times.
+        if [ -e Berksfile.lock ]
+        then
+          for i in {1..3}; do
+            /opt/chef/embedded/bin/berks update && break || sleep 15
+          done
+        fi
+        for i in {1..3}; do
+          /opt/chef/embedded/bin/berks vendor '#{options[:cookbook_path]}' \
+            -b /var/chef/Berksfile && break || sleep 15
+        done
+      EOF
+
+    cloud_init_write_files << {
+      path: '/var/chef/berkshelf.sh',
+      content: berks_content,
+      permissions: '0500'
+    }
+  end
+
+  def emit_berksfile(options)
+    cfn_init_config :emit_berksfile do
+      file '/var/chef/Berksfile', content: Cfer.cfize(options[:berksfile].strip_heredoc),
+        mode: '000500', owner: 'root', group: 'root'
+    end
+  end
+
+  def run_berkshelf(options)
+    cfn_init_config :run_berkshelf do
+      command :run_berkshelf, '/var/chef/berkshelf.sh', cwd: '/var/chef'
+    end
   end
 
   def build_write_json_cmd(chef_solo_json_path)
-    Cfer::Core::Fn.join('', [
-      "mkdir -p #{File.dirname(chef_solo_json_path)} && cfn-get-metadata --region ",
-        Cfer::Cfn::AWS.region,
-        ' -s ', Cfer::Cfn::AWS.stack_name, ' -r ', @name,
-        " | python -c 'import sys; import json; print " \
-          "json.dumps(json.loads(sys.stdin.read()).get(" \
-          '"CferExt::Provisioning::Chef",  {}), sort_keys=True, indent=2)',
-        "' > #{chef_solo_json_path}"
-    ])
+    python_json_dump = [
+      'import sys; import json;',
+      'print json.dumps(json.loads(sys.stdin.read())',
+      '.get("CferExt::Provisioning::Chef", {}), sort_keys=True, indent=2)'
+    ].join('')
+
+    cmd = <<-BASH.strip_heredoc
+      mkdir -p '#{File.dirname(chef_solo_json_path)}' &&
+        cfn-get-metadata --region 'C{AWS.region}' \
+                         -s 'C{AWS.stack_name}' \
+                         -r #{@name} |
+        python -c '#{python_json_dump}' > #{chef_solo_json_path}
+    BASH
+
+    Cfer.cfize(cmd)
   end
 
   def chef_solo(options = {})
     raise "Chef already configured on this resource" if @chef
     @chef = true
 
-    chef_solo_config_path = options[:config_path] || '/etc/chef/solo.rb'
-    chef_solo_json_path = options[:json_path] || '/etc/chef/config.json'
+    must_install_berkshelf = !options[:berksfile].nil? || options[:force_berkshelf_install]
 
-    chef_cookbook_path = options[:cookbook_path] || '/var/chef/cookbooks'
-    chef_log_path = options[:log_path] || '/var/log/chef-client.log'
+    options[:config_path] ||= '/etc/chef/solo.rb'
+    options[:json_path] ||= '/etc/chef/node.json'
+    options[:cookbook_path] ||= '/var/chef/cookbooks'
+    options[:data_bag_path] ||= '/var/chef/data_bags'
+    options[:log_path] ||= '/var/log/chef-solo.log'
 
-    install_chef(options) unless options[:no_install]
+    install_chef_solo_with_cloud_init(options) unless options[:no_install]
 
-    set_chef_json(options[:json])
-    write_json_cmd = build_write_json_cmd(chef_solo_json_path)
+    if must_install_berkshelf
+      install_berkshelf(options) if must_install_berkshelf # places cloud-init runners
+    end
 
+    run_set = []
+
+    unless options[:berksfile].nil?
+      emit_berksfile(options)
+      run_set << :emit_berksfile
+    end
+
+    unless options[:berksfile].nil? || options[:no_run_berkshelf]
+      run_berkshelf(options)
+      run_set << :run_berkshelf
+    end
+
+    cfn_metadata['CferExt::Provisioning::Chef'] = options[:json] || {}
     cfn_init_config :write_chef_json do
-      command :write_chef_json, write_json_cmd
+      command :write_chef_json, build_write_json_cmd(options[:json_path])
     end
+    run_set << :write_chef_json
 
-    cfn_init_config :run_chef do
-      file chef_solo_config_path, content: options[:solo_rb] || Cfer::Core::Fn.join("\n", [
-          "cookbook_path '#{chef_cookbook_path}'",
-          "log_location '#{chef_log_path}'",
-          ""
-        ]),
-        owner: 'root',
-        group: 'root'
+    cfn_init_config :run_chef_solo do
+      solo_rb = <<-RB.strip_heredoc
+        cookbook_path '#{options[:cookbook_path]}'
+        log_location '#{options[:log_path]}'
 
-      chef_cmd = "chef-solo -c '#{chef_solo_config_path}' -j '#{chef_solo_json_path}'"
-      chef_cmd << " -o '#{options[:run_list].join(',')}'" if options[:run_list]
+        json_attribs '#{options[:json_path]}'
+      RB
 
-      command :run_chef, chef_cmd
+      file options[:config_path], content: options[:solo_rb] || solo_rb,
+        mode: '000400', owner: 'root', group: 'root'
+
+      run_list = options[:run_list] || []
+
+      chef_cmd = "chef-solo -c '#{options[:config_path]}' -j '#{options[:json_path]}'"
+      chef_cmd << " -o '#{options[:run_list].join(',')}'" unless options[:run_list].empty?
+
+      file '/usr/local/bin/run-chef-solo.bash', content: chef_cmd,
+        mode: '000500', owner: 'root', group: 'root'
+
+      command :run_chef, 'bash /usr/local/bin/run-chef-solo.bash'
     end
+    run_set << :run_chef_solo
 
-    run_set = [ :write_chef_json, :run_chef ]
-    run_set.prepend :run_berkshelf if options[:berkshelf]
-    cfn_init_config_set :run_chef, run_set
+    cfn_init_config_set :run_chef_solo, run_set
   end
+
+  private
 end
 
