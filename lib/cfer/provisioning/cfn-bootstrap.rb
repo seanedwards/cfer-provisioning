@@ -1,7 +1,7 @@
 require 'erubis'
 
 module Cfer::Provisioning
-  DEFAULT_HUP_INTERVAL_IN_MINUTES = 1
+  DEFAULT_HUP_INTERVAL_IN_MINUTES = 5
 
   def cfn_metadata
     self[:Metadata] ||= {}
@@ -103,7 +103,7 @@ module Cfer::Provisioning
         [main]
         stack=C{AWS.stack_name}
         region=C{AWS.region}
-        interval=#{DEFAULT_HUP_INTERVAL_IN_MINUTES}
+        interval=#{options[:hup_interval] || DEFAULT_HUP_INTERVAL_IN_MINUTES}
       FILE
       file '/etc/cfn/cfn-hup.conf', content: Cfer.cfize(hup_conf_content),
         mode: '000400', owner: 'root', group: 'root'
