@@ -1,0 +1,22 @@
+chef_server_url                           '<%= options[:chef_server_url] %>'
+validation_client_name                    '<%= options[:validation_client_name] %>'
+log_level                                 <%= (options[:log_level] || :info).inspect %>
+log_location                              '<%= options[:log_path] %>'
+json_attribs                              '<%= options[:json_path] %>'
+cookbook_path                             '<%= options[:cookbook_path] %>'
+
+<%- case options[:node_name]
+    when nil -%>
+<%- when :hostname -%>
+  node_name                               `hostname`.strip
+<%- else -%>
+  node_name '<%= options[:node_name] %>'
+<%- end %>
+
+<%- unless options[:environment].nil? -%>
+  environment                             '<%= options[:environment] %>'
+<%- end -%>
+
+<%- unless options[:validation_key].nil? -%>
+  validation_key                          '<%= options[:validation_key] %>'
+<%- end -%>

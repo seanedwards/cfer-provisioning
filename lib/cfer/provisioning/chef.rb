@@ -1,5 +1,5 @@
 module Cfer::Provisioning
-  def install_chef_solo_with_cloud_init(options = {})
+  def install_chef_with_cloud_init(options = {})
     # we can't use the cloud-init `chef` module because it expects a server/validator.
 
     cloud_init_bootcmds <<
@@ -77,6 +77,41 @@ module Cfer::Provisioning
     Cfer.cfize(cmd)
   end
 
+  def chef_client(options = {})
+    raise "Chef already configured on this resource" if @chef
+    @chef = true
+
+    raise "must specify chef_server_url" if options[:chef_server_url].nil?
+    raise "must specify validation_client_name" if options[:validation_client_name].nil?
+
+    options[:config_path] ||= '/etc/chef/client.rb'
+    options[:json_path] ||= '/etc/chef/node.json'
+    options[:cookbook_path] ||= '/var/chef/cookbooks'
+    options[:data_bag_path] ||= '/var/chef/data_bags'
+    options[:log_path] ||= '/var/log/chef-client.log'
+
+    options[:service_type] ||= :upstart
+
+    run_set = []
+
+    install_chef_with_cloud_init(options) unless options[:no_install]
+
+    add_write_chef_json(options)
+    run_set << :write_chef_json
+
+    cfn_init_config :run_chef_client do
+      client_rb = Erubis::Eruby.new(IO.read("#{__dir__}/client.rb.erb")).result(options: options)
+
+      file options[:config_path], content: Cfer.cfize(options[:client_rb] || client_rb),
+        mode: '000400', owner: 'root', group: 'root'
+
+      command :'00_run_chef_once', 'chef-client --once'
+    end
+    run_set << :run_chef_client
+
+    cfn_init_config_set :run_chef_client, run_set
+  end
+
   def chef_solo(options = {})
     raise "Chef already configured on this resource" if @chef
     @chef = true
@@ -89,7 +124,7 @@ module Cfer::Provisioning
     options[:data_bag_path] ||= '/var/chef/data_bags'
     options[:log_path] ||= '/var/log/chef-solo.log'
 
-    install_chef_solo_with_cloud_init(options) unless options[:no_install]
+    install_chef_with_cloud_init(options) unless options[:no_install]
 
     if must_install_berkshelf
       install_berkshelf(options) if must_install_berkshelf # places cloud-init runners
@@ -107,10 +142,7 @@ module Cfer::Provisioning
       run_set << :run_berkshelf
     end
 
-    cfn_metadata['CferExt::Provisioning::Chef'] = options[:json] || {}
-    cfn_init_config :write_chef_json do
-      command :write_chef_json, build_write_json_cmd(options[:json_path])
-    end
+    add_write_chef_json(options)
     run_set << :write_chef_json
 
     cfn_init_config :run_chef_solo do
@@ -124,15 +156,7 @@ module Cfer::Provisioning
       file options[:config_path], content: options[:solo_rb] || solo_rb,
         mode: '000400', owner: 'root', group: 'root'
 
-      run_list = options[:run_list] || []
-
-      chef_cmd = "chef-solo -c '#{options[:config_path]}' -j '#{options[:json_path]}'"
-      chef_cmd << " -o '#{options[:run_list].join(',')}'" unless options[:run_list].empty?
-
-      file '/usr/local/bin/run-chef-solo.bash', content: chef_cmd,
-        mode: '000500', owner: 'root', group: 'root'
-
-      command :run_chef, 'bash /usr/local/bin/run-chef-solo.bash'
+      command :run_chef, 'chef-solo'
     end
     run_set << :run_chef_solo
 
@@ -140,5 +164,14 @@ module Cfer::Provisioning
   end
 
   private
+  def add_write_chef_json(options)
+    options[:run_list] ||= []
+    options[:json] ||= {}
+
+    cfn_metadata['CferExt::Provisioning::Chef'] = options[:json].merge(run_list: options[:run_list])
+    cfn_init_config :write_chef_json do
+      command :write_chef_json, build_write_json_cmd(options[:json_path])
+    end
+  end
 end
 
