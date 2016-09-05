@@ -4,7 +4,10 @@ require 'cfer'
 require 'cfer/provisioning'
 
 set :backend, :ssh
-set :ssh_options, :user => 'ubuntu'
+
+ssh_options = {:user => 'ubuntu'}
+ssh_options.merge! host_keys: [ ENV['CI_SSH_KEY'] ] if ENV['CI_SSH_KEY']
+set :ssh_options, ssh_options
 
 VPC_STACK_NAME = 'cfer-provisioning-vpc'
 
@@ -14,7 +17,7 @@ def with_stack(caller_self, stack_name, file_name, parameters = {})
   caller_self.before(:all) do
     puts "Converging #{stack_name}"
     Cfer.converge! stack_name, template: file_name, follow: true, number: 0,
-      parameter_file: 'parameters.yaml',
+      parameter_file: ENV['CI_PARAMETERS_YAML'] || 'parameters.yaml',
       parameters: parameters
     set :host, Cfer::Cfn::Client.new(stack_name: stack_name).fetch_outputs[:IpAddress]
   end

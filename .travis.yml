@@ -1,10 +1,14 @@
 language: ruby
 rvm:
 - 2.2.5
-before_install: gem install bundler -v 1.10.6
+before_install:
+- openssl aes-256-cbc -K $encrypted_625120cbf6b5_key -iv $encrypted_625120cbf6b5_iv
+  -in travis-ci.pem.enc -out travis-ci.pem -d
+- gem install bundler -v 1.10.6
+- chmod 0600 travis-ci.pem
 install: bundle install --without debug --jobs=3 --retry=3
 script:
-  - bundle exec rspec ${SPEC_FILE}
+- bundle exec rspec ${SPEC_FILE}
 env:
   matrix:
   - SPEC_FILE=spec/cfer/cloudinit_spec.rb
@@ -12,5 +16,8 @@ env:
   - SPEC_FILE=spec/cfer/ansible_spec.rb
   - SPEC_FILE=spec/cfer/chef_spec.rb
   global:
+  - AWS_REGION=us-east-1
+  - CI_PARAMETERS_YAML=parameters.yaml.ci
+  - CI_DEPLOY_KEY=travis-ci.pem
   - secure: cFQE6qxj0wLs0wenqXHwkO0lUacOAUhq1nHCogcJIJLz2O7k1KZVqWa/yXfVNq18Zdt2tLpf10qYI/ZRnFffbDoBC3h+poD7Jh72askpI7t/IjQOQ/XdHZmViZNdurbB0BK4Twd+2Zu5ZAlGkXwJ5fpmagitBuO54ctnCllGI4NK20xj7xePEymwngcLEv6cgnmGmlAEr0URrb93o1kG5pdmUSWdonmwrBD23q9eCgB5eAyepH21MaP3GMJoQmqyOReezblAdZm7rWxtYELO8wrr9kSq7/7ZSiDw0aYvdQiMg3RUPiFDsQU7c8NEzZ1NqsvHIYTgG3SY2BdQdrEIJNZhTh//5CCOpgZnWhGS65rWTdxg+2NZC30LMSzC0g1G9FP8sBiJdjihREx+qRFiuQYsM41sICsaznNAOL8xa7YOWH7ES+upnxCWzixtA5FSwI3CpoJJhf75bAJIbfqylL9T7FxtuBtUseLoO1IqJq5YXrIdGthu1eBe2u9+gT1YZAaJexPLEz9xA/HxCcBzrlgbByNOacZJcQWSd/1T61XtFVybecnpCkP+r4SGvvPf9mPYPAs0/NGy4OpsiIW2YI3GfIl3u/MHC3cZxrdy9qqLcYFajSzitVoewLGROwMpYjXRqeFYAf7t7tgQtEzDT2PJLIqPRGwHYKKcqjqfY0c=
   - secure: fBmcnH8S0eB8q8IdGLFTUVec1iOxC6IzvJcjmbHzbt4yC0b0RW/E9jAy4F+cN6YDDKo2iYG/YuVomddt4EIKAodCNlqlO8Y0WBNUnw6qwELi4kVTxpYf9X3ttk3xMExPK+hlPj88v8g6N1EFJlKyR2lptNMmygHsJpGyyXJa4guZfdiPj1O8IrJ87fjn85HAl4aOeDKlj8LnP1OGJhQ3cJHt4tD3SscONs/KNsCvLQmXFDw/QLR4clK1gZNMrmpP9CTDypQhvgDPHpL72V0tKhkmGRYqlWQIlkfLpf369yQpkPRwzWhiN5mM7Y1OlSj8zI3PYMc2es5ZoiLVVdvONU43ZoKzWLDvwHs8GgGmyxkHT31ifeIt9/RMD0z2WFgaBURfZtlM6BUt3UHpW6AbFYZKNmwsnRuQcHfX88eNkDQcDbGenDjjNVGRb0FoAN2TG8U76YanaWxmeb66XSgrTpQcQOwY8WR3tynyZ3y9T6wIB6qFeYb9ekt7jsRHQkElrWNpcoVRN9LUKLFgLMSffxilyKbBqQbYQqSVBZMXwRFtEWt6CKR3tfmKwg3fLIrHQkn1R9VUm2Jjy6MTUykByFH5rcQTDGQrSE1DDaH4HfePc+WKrnV2rtkWV728sIGBVWgbFNVUF3TUzI/aTjju5C70PyhWRsc3W4rOIqllz7Y=
