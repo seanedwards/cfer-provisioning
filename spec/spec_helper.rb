@@ -2,7 +2,6 @@ $LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
 require 'serverspec'
 require 'cfer'
 require 'cfer/provisioning'
-require 'pry-byebug'
 
 set :backend, :ssh
 set :ssh_options, :user => 'ubuntu'
