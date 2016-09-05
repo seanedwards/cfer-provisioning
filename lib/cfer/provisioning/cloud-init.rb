@@ -57,9 +57,11 @@ module Cfer::Provisioning
   end
 
   def cloud_init_finalize!
+    return unless self[:CloudInit]
+
     cloud_init_outputs[:all] ||= "| tee -a /var/log/cloud-init-output.log"
 
-    user_data Cfer::Core::Fn.base64( cloud_init_to_user_data(self[:CloudInit]) )
+    user_data Cfer::Core::Functions::Fn.base64( cloud_init_to_user_data(self[:CloudInit]) )
     self.delete :CloudInit
   end
 
@@ -73,3 +75,12 @@ module Cfer::Provisioning
   end
 
 end
+
+Cfer::Core::Resource.after 'AWS::AutoScaling::LaunchConfiguration' do
+  cloud_init_finalize!
+end
+
+Cfer::Core::Resource.after 'AWS::EC2::Instance' do
+  cloud_init_finalize!
+end
+

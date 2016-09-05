@@ -4,7 +4,8 @@ module Cfer::Provisioning
   DEFAULT_HUP_INTERVAL_IN_MINUTES = 5
 
   def cfn_metadata
-    self[:Metadata] ||= {}
+    self[:Metadata] ||= Hash.new
+    self[:Metadata]
   end
 
   def cfn_auth(name, options = {})
@@ -12,17 +13,16 @@ module Cfer::Provisioning
     cfn_metadata['AWS::CloudFormation::Authentication'][name] = options
   end
 
-  def cfn_init_setup(options = {})
-    cfn_metadata['AWS::CloudFormation::Init'] = {}
-    cfn_init_set_cloud_init(options)
+  def cloudformation_init
+    cfn_metadata['AWS::CloudFormation::Init'] ||= {}
+  end
 
+  def cfn_init_setup(options = {})
     if options[:cfn_hup_config_set]
       cfn_hup(options)
     end
-  end
 
-  def config_set(name)
-    { "ConfigSet" => name }
+    cfn_init_set_cloud_init(options)
   end
 
   def cfn_init_config_set(name, sections)
@@ -75,11 +75,6 @@ module Cfer::Provisioning
       packages[type][name] = versions
     end
   end
-
-  def cloudformation_init(options = {})
-    cfn_metadata['AWS::CloudFormation::Init'] ||= {}
-  end
-
 
   def cfn_hup(options)
     resource_name = @name

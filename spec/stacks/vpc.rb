@@ -77,7 +77,12 @@ resource :SSHSecurityGroup, 'AWS::EC2::SecurityGroup' do
       ToPort: p,
       IpProtocol: 'tcp'
     }
-  }
+  } + [{
+    CidrIp: '0.0.0.0/0',
+    FromPort: -1,
+    ToPort: -1,
+    IpProtocol: 'icmp'
+  }]
 end
 
 output :SecurityGroup, Fn::ref(:SSHSecurityGroup)

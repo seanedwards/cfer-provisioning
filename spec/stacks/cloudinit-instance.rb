@@ -1,11 +1,6 @@
 description 'A simple instance to test cfn-init and cfn-hup'
 
-VPC = lookup_outputs(VPC_STACK_NAME)
-
-# This is the Ubuntu 14.04 LTS HVM AMI provided by Amazon.
-parameter :ImageId, default: 'ami-fce3c696'
-parameter :InstanceType, default: 't2.nano'
-
+include_template('fragments/vpc.rb')
 
 resource :EC2Instance, 'AWS::EC2::Instance', CreationPolicy: {
     ResourceSignal: {
@@ -13,16 +8,12 @@ resource :EC2Instance, 'AWS::EC2::Instance', CreationPolicy: {
       Timeout: 'PT5M'
     }
   } do
+  cfn_init_setup signal: :EC2Instance
 
-  cfn_init_setup signal: :EC2Instance,
-    cfn_init_config_set: [ :cfn_hup, :provision ],
-    cfn_hup_config_set: [ :cfn_hup, :provision ]
-
-  cfn_init_config_set :provision, [ :provision_file ]
-
-  cfn_init_config :provision_file do
-    file '/home/ubuntu/test.txt', content: parameters[:FileContents]
-  end
+  cloud_init_write_files << {
+    path: '/home/ubuntu/test.txt',
+    content: parameters[:FileContents]
+  }
 
   image_id Fn::ref(:ImageId)
   instance_type Fn::ref(:InstanceType)
@@ -30,6 +21,8 @@ resource :EC2Instance, 'AWS::EC2::Instance', CreationPolicy: {
   key_name (parameters[:SSHKey] || raise("Please specify `SSHKey` in parameters.yml"))
   subnet_id VPC[:Subnet]
   security_group_ids [ VPC[:SecurityGroup] ]
+
+  tag :Name, AWS::stack_name
 end
 
 output :IpAddress, Fn::get_att(:EC2Instance, :PublicIp)

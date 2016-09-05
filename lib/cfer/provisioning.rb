@@ -15,6 +15,7 @@ require 'cfer/provisioning/extensions'
 require 'cfer/provisioning/cloud-init'
 require 'cfer/provisioning/cfn-bootstrap'
 require 'cfer/provisioning/chef'
+require 'cfer/provisioning/ansible'
 
 Cfer::Core::Resource.extend_resource "AWS::EC2::Instance" do
   include Cfer::Provisioning

@@ -15,8 +15,6 @@ module Cfer::Provisioning
   def install_berkshelf(options)
     cloud_init_packages << 'git'
 
-    cloud_init_bootcmds << '/opt/chef/embedded/bin/gem install berkshelf --no-ri --no-rdoc'
-
     berks_content = <<-EOF.strip_heredoc
         # may be run before HOME is established (fixes RbReadLine bug)
         export HOME=/root
@@ -25,6 +23,8 @@ module Cfer::Provisioning
         # Some cookbooks have UTF-8, and cfn-init uses US-ASCII because of reasons
         export LANG=en_US.UTF-8
         export RUBYOPTS="-E utf-8"
+
+        command -v /opt/chef/embedded/bin/berks || /opt/chef/embedded/bin/gem install berkshelf --no-ri --no-rdoc -v '#{options[:berkshelf_version] || ''}'
 
         # Berkshelf seems a bit unreliable, so retry these commands a couple times.
         if [ -e Berksfile.lock ]
@@ -116,8 +116,6 @@ module Cfer::Provisioning
     raise "Chef already configured on this resource" if @chef
     @chef = true
 
-    must_install_berkshelf = !options[:berksfile].nil? || options[:force_berkshelf_install]
-
     options[:config_path] ||= '/etc/chef/solo.rb'
     options[:json_path] ||= '/etc/chef/node.json'
     options[:cookbook_path] ||= '/var/chef/cookbooks'
@@ -125,10 +123,7 @@ module Cfer::Provisioning
     options[:log_path] ||= '/var/log/chef-solo.log'
 
     install_chef_with_cloud_init(options) unless options[:no_install]
-
-    if must_install_berkshelf
-      install_berkshelf(options) if must_install_berkshelf # places cloud-init runners
-    end
+    install_berkshelf(options) if !options[:berksfile].nil? || options[:force_berkshelf_install]
 
     run_set = []
 
