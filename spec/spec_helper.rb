@@ -35,7 +35,7 @@ RSpec.configure do |config|
       template: 'spec/stacks/vpc.rb',
       follow: true,
       number: 0,
-      parameter_file: 'parameters.yaml'
+      parameter_file: ENV['CI_PARAMETERS_YAML'] || 'parameters.yaml'
   end
 
   config.after(:suite) do
