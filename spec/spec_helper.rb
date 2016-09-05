@@ -6,7 +6,7 @@ require 'cfer/provisioning'
 set :backend, :ssh
 
 ssh_options = {:user => 'ubuntu'}
-ssh_options.merge! host_keys: [ ENV['CI_SSH_KEY'] ] if ENV['CI_SSH_KEY']
+ssh_options.merge! keys: [ ENV['CI_SSH_KEY'] ] if ENV['CI_SSH_KEY']
 set :ssh_options, ssh_options
 
 VPC_STACK_NAME = 'cfer-provisioning-vpc'
