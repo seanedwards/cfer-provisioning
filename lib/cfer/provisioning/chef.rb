@@ -26,6 +26,10 @@ module Cfer::Provisioning
         export LANG=en_US.UTF-8
         export RUBYOPTS="-E utf-8"
 
+        set -e
+        [ -f /opt/chef/embedded/bin/berks ] || /opt/chef/embedded/bin/gem install berkshelf
+        set +e
+
         # Berkshelf seems a bit unreliable, so retry these commands a couple times.
         if [ -e Berksfile.lock ]
         then
