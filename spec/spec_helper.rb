@@ -46,9 +46,5 @@ RSpec.configure do |config|
       follow: true, number: 0, backoff: 2, backoff_max_wait: 60,
       parameter_file: ENV['CI_PARAMETERS_YAML'] || 'parameters.yaml'
   end
-
-  config.after(:suite) do
-    Cfer.delete! VPC_STACK_NAME, follow: true, number: 0 unless KEEP_STACK
-  end
 end
 
