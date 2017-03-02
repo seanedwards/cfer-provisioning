@@ -8,7 +8,7 @@ before_install:
 - chmod 0600 travis-ci.pem
 install: bundle install --without debug --jobs=3 --retry=3
 script:
-- bundle exec rspec ${SPEC_FILE}
+- 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; bundle exec rspec ${SPEC_FILE}; fi'
 env:
   matrix:
   - SPEC_FILE=spec/cfer/cloudinit_spec.rb
