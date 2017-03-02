@@ -11,8 +11,15 @@ set :ssh_options, ssh_options
 
 VPC_STACK_NAME = 'cfer-provisioning-vpc'
 
+KEEP_STACK = ENV['KEEP_STACK']
+
 def with_stack(caller_self, stack_name, file_name, parameters = {})
-  stack_name = "cfer-provisioning-#{stack_name}-#{SecureRandom.uuid}"
+  stack_name =
+    if KEEP_STACK
+      "cfer-provisioning-#{stack_name}"
+    else
+      "cfer-provisioning-#{stack_name}-#{SecureRandom.uuid}"
+    end
 
   caller_self.before(:all) do
     puts "Converging #{stack_name}"
@@ -24,8 +31,10 @@ def with_stack(caller_self, stack_name, file_name, parameters = {})
   end
 
   caller_self.after(:all) do
-    puts "Deleting #{stack_name}"
-    Cfer.delete! stack_name
+    unless KEEP_STACK
+      puts "Deleting #{stack_name}"
+      Cfer.delete! stack_name
+    end
   end
 end
 
@@ -39,7 +48,7 @@ RSpec.configure do |config|
   end
 
   config.after(:suite) do
-    #Cfer.delete! VPC_STACK_NAME, follow: true, number: 0 unless ENV['KEEP_STACK']
+    Cfer.delete! VPC_STACK_NAME, follow: true, number: 0 unless KEEP_STACK
   end
 end
 
