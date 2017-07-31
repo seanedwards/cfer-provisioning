@@ -24,6 +24,6 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "rspec"
   spec.add_development_dependency "serverspec"
 
-  spec.add_runtime_dependency 'cfer', '~> 0.5'
+  spec.add_runtime_dependency 'cfer', '>= 0.5'
   spec.add_runtime_dependency 'erubis', '~> 2.7.0'
 end
